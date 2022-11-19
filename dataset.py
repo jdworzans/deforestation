@@ -40,16 +40,14 @@ class DeforestationDataset(Dataset):
 class DataModule(pl.LightningDataModule):
     def __init__(self, transform: Optional[Callable] = None, batch_size: int = 32):
         super().__init__()
-        self.train_dataset = DeforestationDataset("data/train.csv", "data", transform)
+        self.train_dataset = DeforestationDataset("data/split/train.csv", "data", transform)
+        self.test = DeforestationDataset("data/split/test.csv", "data", transform)
         self.to_predict = DeforestationDataset("data/test.csv", "data", transform)
 
         train_size = int(0.8 * len(self.train_dataset))
-        val_size = int(0.1 * len(self.train_dataset))
-        test_size = len(self.train_dataset) - train_size - val_size
+        val_size = len(self.train_dataset) - train_size
 
-        self.train, self.val, self.test = random_split(
-            self.train_dataset, [train_size, val_size, test_size]
-        )
+        self.train, self.val = random_split(self.train_dataset, [train_size, val_size])
         self.batch_size = batch_size
         self.num_workers = 4
         print("Created DataModule")
