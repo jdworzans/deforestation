@@ -16,8 +16,10 @@ class DeforestationModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self._setup_model()
-        self.accuracy = torchmetrics.Accuracy()
-        self.f1_score = torchmetrics.F1Score(num_classes=3, average="macro")
+        metrics = torchmetrics.MetricCollection([torchmetrics.Accuracy(), torchmetrics.F1Score(num_classes=3, average="macro")])
+        self.train_metrics = metrics.clone(prefix='train/')
+        self.val_metrics = metrics.clone(prefix='val/')
+        self.test_metrics = metrics.clone(prefix='test/')
 
     def _setup_model(self):
         initial_weights = torchvision.models.VGG11_Weights.DEFAULT
@@ -33,36 +35,43 @@ class DeforestationModule(pl.LightningModule):
 
     def forward(self, x):
         img = x
-        y = self.model(self.preprocess(img))
+        y = self.model(img)
         return y
 
-    def step(self, batch, batch_idx, prefix: str):
+    def training_step(self, batch, batch_idx):
         img, y = batch
         preds = self(img)
         loss = F.cross_entropy(preds, y)
-        self.log(f"{prefix}/loss", loss)
-        self.calculate_metrics(preds, y, prefix)
+        self.log(f"train/loss", loss)
+        self.log_dict(self.train_metrics(preds, y))
         return loss
 
-    def training_step(self, batch, batch_idx):
-        return self.step(batch, batch_idx, "train")
-
     def validation_step(self, batch, batch_idx):
-        return self.step(batch, batch_idx, "val")
+        img, y = batch
+        preds = self(img)
+        loss = F.cross_entropy(preds, y)
+        self.log(f"val/loss", loss)
+        self.val_metrics.update(preds, y)
+        return loss
+
+    def validation_epoch_end(self, outputs) -> None:
+        self.log_dict(self.val_metrics.compute())
 
     def test_step(self, batch, batch_idx):
-        return self.step(batch, batch_idx, "test")
-    
+        img, y = batch
+        preds = self(img)
+        loss = F.cross_entropy(preds, y)
+        self.log(f"test/loss", loss)
+        self.log_dict(self.test_metrics.update(preds, y))
+        return loss    
+
+    def test_epoch_end(self, outputs) -> None:
+        self.log_dict(self.test_metrics.compute())
+
     def predict_step(self, batch, batch_idx):
         img = batch
         preds = self(img)
         return batch_idx, preds.argmax(-1)
-
-    def calculate_metrics(self, preds, y, prefix):
-        self.accuracy(preds, y)
-        self.f1_score(preds, y)
-        self.log(f"{prefix}/acc_step", self.accuracy)
-        self.log(f"{prefix}/f1_step", self.f1_score)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.hparams.learning_rate)
@@ -83,7 +92,7 @@ if __name__ == "__main__":
     # Helper callback for saving models
     checkpoint_callback = ModelCheckpoint(
         monitor="val/loss",
-        filename="model-{epoch:02d}-{valid_loss:.2E}",
+        filename="model-{epoch:02d}-{val/loss:.2E}",
         save_top_k=3,
         mode="min",
     )
