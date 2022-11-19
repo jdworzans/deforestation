@@ -1,0 +1,15 @@
+name: deforestation
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - pip
+  - python=3.9.13=h9a8a25e_0_cpython
+  - pytorch=1.12.0
+  - torchvision
+  - pytorch-lightning
+  - cudatoolkit=11.6.0
+  - pandas=1.2.4
+  - pip:
+    - jsonargparse[signatures]>=4.12.0
